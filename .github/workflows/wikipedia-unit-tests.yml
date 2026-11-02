@@ -1,0 +1,75 @@
+name: Wikipedia unit tests
+
+# The Wikipedia iOS app's own unit tests (its "Run Unit Tests" job, Wikipedia scheme) at a fixed commit, on GitHub's
+# hosted macOS runner and on NoMac CI side by side, with the same Xcode and the same simulator on both.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unit-tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [xcode-27, nomac]
+    runs-on: ${{ matrix.runner }}
+    name: ${{ matrix.runner }}
+    timeout-minutes: 90
+    env:
+      WIKIPEDIA_COMMIT: ca8aaeb95639ca82105bcd5510277d8dde0e420e
+      XCODE_VERSION: "27.0"
+      IOS_VERSION: "27.0"
+      SIMULATOR_NAME: iPhone 17
+    steps:
+      - name: Check out the Wikipedia iOS app
+        uses: actions/checkout@v5
+        with:
+          repository: wikimedia/wikipedia-ios
+          ref: ${{ env.WIKIPEDIA_COMMIT }}
+
+      - name: The machine
+        run: |
+          sw_vers
+          sysctl -n machdep.cpu.brand_string hw.ncpu hw.memsize
+
+      - name: Select Xcode
+        run: |
+          for app in /Applications/Xcode*.app; do
+            version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist" 2>/dev/null || true)
+            if [ "$version" = "$XCODE_VERSION" ]; then
+              echo "DEVELOPER_DIR=$app/Contents/Developer" >> "$GITHUB_ENV"
+              echo "Xcode $XCODE_VERSION: $app"
+              exit 0
+            fi
+          done
+          echo "No Xcode $XCODE_VERSION in /Applications"
+          exit 1
+
+      - name: Simulator
+        id: simulator
+        run: |
+          xcodebuild -version
+          runtime="com.apple.CoreSimulator.SimRuntime.iOS-${IOS_VERSION//./-}"
+          udid=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          name, runtime = sys.argv[1], sys.argv[2]
+          devices = json.load(sys.stdin)["devices"].get(runtime, [])
+          print(next((d["udid"] for d in devices if d["name"] == name), ""))' "$SIMULATOR_NAME" "$runtime")
+          if [ -z "$udid" ]; then
+            udid=$(xcrun simctl create "$SIMULATOR_NAME" com.apple.CoreSimulator.SimDeviceType.iPhone-17 "$runtime")
+          fi
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+          echo "$SIMULATOR_NAME, iOS $IOS_VERSION: $udid"
+
+      - name: Build and test
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -scheme Wikipedia \
+            -project Wikipedia.xcodeproj \
+            -onlyUsePackageVersionsFromResolvedFile \
+            -destination "id=${{ steps.simulator.outputs.udid }}" \
+            -resultBundlePath Wikipedia_TestResults \
+            2>&1 | grep -E "Test Suite '(All tests|WikipediaUnitTests.xctest)'|Executed [0-9]+ test|\*\* (TEST|BUILD)|error:" | tail -n 30
