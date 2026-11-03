@@ -9,6 +9,8 @@ Both run the same job: [wikimedia/wikipedia-ios](https://github.com/wikimedia/wi
 
 The workflow is [`.github/workflows/wikipedia-unit-tests.yml`](.github/workflows/wikipedia-unit-tests.yml). Every run is public under [Actions](../../actions), with its timings and logs.
 
-Results are in [RESULTS.md](RESULTS.md), measured from the GitHub API (each job's start and end, and its build-and-test step), with every run linked. Data: CC BY 4.0.
+**Result (median of 16 paired runs, November 2 and 3, 2026):** the whole job took 14m 32s on GitHub's runner and 5m 24s on NoMac CI; a run cost 93¢ on GitHub in a private repository (free in a public one) and 9¢ on NoMac CI. GitHub's runner started the job sooner: 4s from queued to running, against 39s.
+
+Details and every run are in [RESULTS.md](RESULTS.md), measured from the GitHub API (each job's start and end, and its build-and-test step), with every run linked. Data: CC BY 4.0.
 
 NoMac makes NoMac CI. Run the workflow in your own fork to check the numbers.
